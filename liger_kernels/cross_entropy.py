@@ -84,7 +84,9 @@ def liger_cross_entropy_kernel(
     # 3. [Online softmax] first pass: find max + sum
     m = float("-inf")  # m is the max value. use the notation from the paper
     d = 0.0  # d is the sum. use the notation from the paper
-    ori_X_y = tl.load(X_ptr + y)  # we need to store the original value of X_y for the loss calculation
+    ori_X_y = tl.load(
+        X_ptr + y
+    )  # we need to store the original value of X_y for the loss calculation
 
     # Label smoothing is a general case of normal cross entropy
     # See the full derivation at https://github.com/linkedin/Liger-Kernel/pull/198#issue-2503665310
@@ -93,7 +95,9 @@ def liger_cross_entropy_kernel(
 
     for i in range(0, n_cols, BLOCK_SIZE):
         X_offsets = i + tl.arange(0, BLOCK_SIZE)
-        X_block = tl.load(X_ptr + X_offsets, mask=X_offsets < n_cols, other=float("-inf"))
+        X_block = tl.load(
+            X_ptr + X_offsets, mask=X_offsets < n_cols, other=float("-inf")
+        )
         block_max = tl.max(X_block)
         if label_smoothing > 0:
             # scale X beforehand to avoid overflow
@@ -121,7 +125,9 @@ def liger_cross_entropy_kernel(
 
     for i in range(0, n_cols, BLOCK_SIZE):
         X_offsets = i + tl.arange(0, BLOCK_SIZE)
-        X_block = tl.load(X_ptr + X_offsets, mask=X_offsets < n_cols, other=float("-inf"))
+        X_block = tl.load(
+            X_ptr + X_offsets, mask=X_offsets < n_cols, other=float("-inf")
+        )
         if reduction == "mean":
             X_block = (tl.exp(X_block - m) / d - eps) / (n_non_ignore)
         else:
@@ -234,7 +240,9 @@ def cross_entropy_forward(
     return loss, _input
 
 
-def cross_entropy_backward(_input: jax.Array, grad_output: jax.Array, last_layer: bool = False) -> jax.Array:
+def cross_entropy_backward(
+    _input: jax.Array, grad_output: jax.Array, last_layer: bool = False
+) -> jax.Array:
     """
     Compute the gradient of the input tensor for the cross entropy loss.
 
@@ -305,10 +313,14 @@ def liger_cross_entropy(
     """
     _input = _input.reshape(-1, _input.shape[-1])
     target = target.reshape(-1)
-    assert _input.shape[0] == target.shape[0], "Input and target must have the same batch size."
+    assert (
+        _input.shape[0] == target.shape[0]
+    ), "Input and target must have the same batch size."
     if target_mask is not None:
         target_mask = target_mask.reshape(-1)
-        assert target.shape[0] == target_mask.shape[0], "Target and target mask must have the same shape."
+        assert (
+            target.shape[0] == target_mask.shape[0]
+        ), "Target and target mask must have the same shape."
         target = jnp.where(target_mask, target, ignore_index)
 
     @jax.custom_gradient

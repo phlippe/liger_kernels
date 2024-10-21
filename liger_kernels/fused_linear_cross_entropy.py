@@ -78,7 +78,9 @@ def fused_linear_cross_entropy_forward(
     BLOCK_SIZE = min(MAX_FUSED_SIZE, triton.next_power_of_2(V))
 
     inc_factor = triton.cdiv(V, H)  # (V + H - 1) // H
-    chunk_size = triton.next_power_of_2(triton.cdiv(BT, inc_factor))  # (BT + inc_factor - 1) // inc_factor
+    chunk_size = triton.next_power_of_2(
+        triton.cdiv(BT, inc_factor)
+    )  # (BT + inc_factor - 1) // inc_factor
     if BT % chunk_size != 0:
         raise NotImplementedError(
             "The current version of the kernel only supports batch sizes divisible by chunk size, "
@@ -104,7 +106,9 @@ def fused_linear_cross_entropy_forward(
 
         # unreduced loss
         loss_1d_slice = jax.ShapeDtypeStruct(shape=(chunk_size,), dtype=jnp.float32)
-        n_non_ignore = (target_chunk != ignore_index).sum().astype(jnp.float32).clip(min=1)
+        n_non_ignore = (
+            (target_chunk != ignore_index).sum().astype(jnp.float32).clip(min=1)
+        )
 
         # when doing CE, use the upcasted precision
         logits_chunk = logits_chunk.astype(jnp.float32)
@@ -135,7 +139,9 @@ def fused_linear_cross_entropy_forward(
         # operation that forces the XLA compiler to wait for the triton kernel to complete. However, even this
         # showed not sufficient when running on a LLM model.
         if add_trivial_operations:
-            triv_loss_scalar = jax.lax.stop_gradient(loss_1d_slice.sum()).astype(logits_chunk.dtype)
+            triv_loss_scalar = jax.lax.stop_gradient(loss_1d_slice.sum()).astype(
+                logits_chunk.dtype
+            )
             logits_chunk = logits_chunk + triv_loss_scalar
             logits_chunk = logits_chunk - triv_loss_scalar
 
@@ -176,7 +182,10 @@ def fused_linear_cross_entropy_forward(
     (grad_weight, grad_bias), (loss_1d, grad_input) = jax.lax.scan(
         _scan_fn,
         init=(grad_weight, grad_bias),
-        xs=(_input.reshape(num_chunks, chunk_size, H), target.reshape(num_chunks, chunk_size)),
+        xs=(
+            _input.reshape(num_chunks, chunk_size, H),
+            target.reshape(num_chunks, chunk_size),
+        ),
         length=num_chunks,
     )
 
@@ -299,28 +308,48 @@ def liger_fused_linear_cross_entropy(
     Returns:
         The cross entropy loss.
     """
-    LOGGER.warning("Using Liger fused linear cross entropy kernel may not be stable within jit compilation.")
+    LOGGER.warning(
+        "Using Liger fused linear cross entropy kernel may not be stable within jit compilation."
+    )
 
     _input = _input.reshape(-1, _input.shape[-1])
     target = target.reshape(-1)
-    assert _input.shape[0] == target.shape[0], "Input and target must have the same batch size."
-    assert _input.shape[1] == weight.shape[0], "Input and weight must have the same hidden size."
+    assert (
+        _input.shape[0] == target.shape[0]
+    ), "Input and target must have the same batch size."
+    assert (
+        _input.shape[1] == weight.shape[0]
+    ), "Input and weight must have the same hidden size."
     if bias is not None:
-        assert weight.shape[1] == bias.shape[0], "Weight and bias must have the same output size."
+        assert (
+            weight.shape[1] == bias.shape[0]
+        ), "Weight and bias must have the same output size."
     if target_mask is not None:
         target_mask = target_mask.reshape(-1)
-        assert target.shape[0] == target_mask.shape[0], "Target and target mask must have the same shape."
+        assert (
+            target.shape[0] == target_mask.shape[0]
+        ), "Target and target mask must have the same shape."
         target = jnp.where(target_mask, target, ignore_index)
 
     @jax.custom_gradient
     def fwd(_input, weight, target, bias):
         loss, grad_input, grad_weight, grad_bias = fused_linear_cross_entropy_forward(
-            _input, weight, target, bias, ignore_index, label_smoothing, reduction, dtype, add_trivial_operations
+            _input,
+            weight,
+            target,
+            bias,
+            ignore_index,
+            label_smoothing,
+            reduction,
+            dtype,
+            add_trivial_operations,
         )
 
         def backward(grad_output):
-            n_grad_input, n_grad_weight, n_grad_bias = fused_linear_cross_entropy_backward(
-                grad_output, grad_input, grad_weight, grad_bias, last_layer
+            n_grad_input, n_grad_weight, n_grad_bias = (
+                fused_linear_cross_entropy_backward(
+                    grad_output, grad_input, grad_weight, grad_bias, last_layer
+                )
             )
             # Up-cast gradients for parameters.
             n_grad_input = n_grad_input.astype(_input.dtype)
