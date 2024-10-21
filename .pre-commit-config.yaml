@@ -23,7 +23,6 @@ repos:
   - id: name-tests-test
     args: [ --pytest-test-first ]
     exclude: ^tests/trainer/helpers/
-  - id: no-commit-to-branch
   - id: trailing-whitespace
 - repo: https://github.com/asottile/setup-cfg-fmt
   rev: v2.5.0
