@@ -114,11 +114,13 @@ def fused_linear_cross_entropy_forward(
         logits_chunk = logits_chunk.astype(jnp.float32)
 
         # Here we calculate the gradient of logits_chunk in place so we can save memory.
-        (loss_1d_slice,) = jt.triton_call(
+        (loss_1d_slice, logits_chunk) = jt.triton_call(
             logits_chunk,
             target_chunk,
             n_non_ignore,
-            out_shape=(loss_1d_slice,),
+            # we can use logits_chunk in place of ShapeDtypeStruct 
+            # because it has both "shape" and "dtype"
+            out_shape=(loss_1d_slice, logits_chunk), 
             X_stride=get_stride(logits_chunk, 0),
             Y_stride=get_stride(target_chunk, 0),  # always 1
             loss_stride=get_stride(loss_1d_slice, 0),  # always 1
@@ -129,6 +131,7 @@ def fused_linear_cross_entropy_forward(
             BLOCK_SIZE=BLOCK_SIZE,
             num_warps=32,
             grid=(n_rows,),
+            input_output_aliases={0: 1},
             kernel=liger_cross_entropy_kernel,
         )
 
@@ -223,15 +226,16 @@ def fused_linear_cross_entropy_backward(
         n_rows = BT
         BLOCK_SIZE = min(MAX_FUSED_SIZE, triton.next_power_of_2(H))
 
-        jt.triton_call(
+        (grad_input,) = jt.triton_call(
             grad_input,
             grad_output,
-            out_shape=(),
+            out_shape=(grad_input,),
             X_stride=get_stride(grad_input, 0),
             n_cols=H,
             BLOCK_SIZE=BLOCK_SIZE,
             num_warps=32,
             grid=(n_rows,),
+            input_output_aliases={0: 0},
             kernel=element_mul_kernel,
         )
 
@@ -240,15 +244,16 @@ def fused_linear_cross_entropy_backward(
             V, H = grad_weight.shape
             n_rows = V
 
-            jt.triton_call(
+            (grad_weight,) = jt.triton_call(
                 grad_weight,
                 grad_output,
-                out_shape=(),
+                out_shape=(grad_weight,),
                 X_stride=get_stride(grad_weight, 0),
                 n_cols=H,
                 BLOCK_SIZE=BLOCK_SIZE,
                 num_warps=32,
                 grid=(n_rows,),
+                input_output_aliases={0: 0},
                 kernel=element_mul_kernel,
             )
 
@@ -256,15 +261,16 @@ def fused_linear_cross_entropy_backward(
             V = grad_bias.shape[0]
             n_rows = V
 
-            jt.triton_call(
+            (grad_bias,) = jt.triton_call(
                 grad_bias,
                 grad_output,
-                out_shape=(),
+                out_shape=(grad_bias,),
                 X_stride=get_stride(grad_bias, 0),
                 n_cols=1,
                 BLOCK_SIZE=BLOCK_SIZE,
                 num_warps=32,
                 grid=(n_rows,),
+                input_output_aliases={0: 0},
                 kernel=element_mul_kernel,
             )
     return grad_input, grad_weight, grad_bias
