@@ -6,8 +6,9 @@ import triton.language as tl
 
 @triton.jit
 def element_mul_kernel(
-    X_ptr,
+    _,  # alias for X_ptr
     grad_output_ptr,
+    X_ptr,
     X_stride,
     n_cols,
     BLOCK_SIZE: tl.constexpr,

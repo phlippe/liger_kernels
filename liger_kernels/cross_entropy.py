@@ -21,10 +21,11 @@ from utils import element_mul_kernel, get_stride
 
 @triton.jit
 def liger_cross_entropy_kernel(
-    X_ptr,
+    _, # alias for X_ptr
     Y_ptr,
     n_non_ignore_ptr,
     loss_ptr,
+    X_ptr,
     X_stride,
     Y_stride,
     loss_stride,
